@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: ocr-postgres
+    environment:
+      POSTGRES_DB: ocr
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d
+
+    networks:
+      - ocr-network
+    restart: unless-stopped
+
+  # Spring Boot Application
+  app:
+    build: .
+    container_name: ocr-app
+    depends_on:
+      - postgres
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ocr
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: admin
+    ports:
+      - "8081:8081"
+    networks:
+      - pcr-network
+    restart: unless-stopped
+
+networks:
+  haccp-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+
