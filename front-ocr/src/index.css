@@ -1,5 +1,5 @@
 @import "react-datepicker/dist/react-datepicker.css";
-@tailwind base; 
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -90,6 +90,6 @@ button:focus-visible {
 }
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
-  background: #8af9ff !important;
+  background: #a18aff !important;
   color: #fff !important;
 }
