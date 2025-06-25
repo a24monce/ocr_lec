@@ -90,6 +90,21 @@ export default function App() {
   const [editingDocIdx, setEditingDocIdx] = useState(null);
   const [editingDocName, setEditingDocName] = useState("");
   const [showOcrPage, setShowOcrPage] = useState(false);
+  const [bonsFiles, setBonsFiles] = useState([]);
+  const [globalFile, setGlobalFile] = useState(null);
+  const [compareResult, setCompareResult] = useState(null);
+  const [showComparePage, setShowComparePage] = useState(false);
+  const [blFiles, setBlFiles] = useState([]);
+  const [factureFile, setFactureFile] = useState(null);
+  const [resultats, setResultats] = useState(null);
+  const [showResultPage, setShowResultPage] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const blInputRef = useRef();
+  const factureInputRef = useRef();
+  const bonInputRef = useRef();
+  const globalInputRef = useRef();
 
   // Si aucun workspace, activeWs est undefined
   const activeWs = workspaces.find((w) => w.id === activeId);
@@ -114,7 +129,7 @@ export default function App() {
       title: "Nouveau titre",
       subtitle: "Date",
       documents: [],
-      globalFacture: null, // <-- Ajout ici
+      globalFacture: null,
     };
     setWorkspaces([newWs, ...workspaces]);
     setActiveId(newId);
@@ -123,6 +138,8 @@ export default function App() {
     setSubtitleInput("");
     setShowSearch(false);
     setCurrentPage(1);
+    setBlFiles([]);         // <-- Ajoute ceci
+    setFactureFile(null);   // <-- Et ceci
   };
 
   // Changer de workspace
@@ -153,44 +170,30 @@ export default function App() {
   // Upload d'un document dans le workspace actif
   const handleUpload = async (event) => {
     const file = event.target.files[0];
-    if (!file || !activeId) return;
-  
+    if (!file) return;
     const formData = new FormData();
     formData.append('file', file);
-  
+
     try {
       const response = await fetch('http://localhost:8000/upload', {
         method: 'POST',
         body: formData,
       });
-  
       const data = await response.json();
-  
       if (response.ok) {
-        setOcrText(data.ocr);
-  
-        const newDoc = {
-          name: file.name,
-          date: new Date().toLocaleString(),
-          description: "", // Ajout clé description
-        };
-  
+        // Ajoute le fichier à l'état local pour l'afficher dans la liste
         setWorkspaces((prev) =>
           prev.map((ws) =>
             ws.id === activeId
-              ? { ...ws, documents: [newDoc, ...ws.documents] }
+              ? { ...ws, documents: [{ name: data.filename, date: new Date().toLocaleString(), ocr: data.ocr }, ...ws.documents] }
               : ws
           )
         );
-  
-        fileInputRef.current.value = ""; // Réinitialise le champ file
-        setCurrentPage(1); // Remet à la première page
-  
-        alert('Fichier envoyé avec succès : ' + data.filename);
+        alert('Fichier envoyé avec succès !');
       } else {
         alert('Erreur : ' + data.error);
       }
-    } catch (err) {
+    } catch (e) {
       alert('Erreur de connexion au serveur.');
     }
   };
@@ -253,6 +256,7 @@ export default function App() {
 
   const handleUploadGlobalFactureFile = (event) => {
     const file = event.target.files[0];
+    const confirmDelete = window.confirm("Es-tu sûr de vouloir supprimer ce dossier ?");
     if (!file) return;
     setWorkspaces((prev) =>
       prev.map((ws) =>
@@ -264,13 +268,45 @@ export default function App() {
     event.target.value = "";
   };
 
+  const handleUploadBon = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    setBonsFiles(prev => [...prev, file]);
+  };
 
-  const handleTraiter = () => {
-    if (ocrText) {
-      setShowOcrPage(true);
-    } else {
-      alert("Aucune transcription OCR disponible.");
+  const handleTraiter = async () => {
+    if (!blFiles.length || !factureFile) {
+      alert("Dépose au moins un bon de livraison et une facture globale !");
+      return;
     }
+    setLoading(true);
+    setProgress(0);
+
+    // Simule la progression (pour l'effet visuel)
+    let fakeProgress = 0;
+    const interval = setInterval(() => {
+      fakeProgress += Math.floor(Math.random() * 10) + 5;
+      setProgress(Math.min(fakeProgress, 95));
+    }, 200);
+
+    const formData = new FormData();
+    blFiles.forEach(file => formData.append("bl_files", file));
+    formData.append("facture_file", factureFile);
+
+    const res = await fetch("http://localhost:8000/check_bl_in_facture", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+
+    clearInterval(interval);
+    setProgress(100);
+    setTimeout(() => {
+      setLoading(false);
+      setResultats(data);
+      setShowResultPage(true);
+      setProgress(0);
+    }, 500); // petit délai pour voir la barre à 100%
   };
 
   const handleEditDocName = (idx) => {
@@ -296,6 +332,63 @@ export default function App() {
     setEditingDocIdx(null);
     setEditingDocName("");
   };
+
+  const handleUploadGlobal = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    setGlobalFile(file);
+  };
+
+  const handleBlUploadClick = () => blInputRef.current.click();
+  const handleFactureUploadClick = () => factureInputRef.current.click();
+
+  const handleBlFilesChange = (e) => {
+    setBlFiles(prev => [...prev, ...Array.from(e.target.files)]);
+    e.target.value = "";
+  };
+
+  const handleFactureFileChange = (e) => {
+    setFactureFile(e.target.files[0]);
+    e.target.value = "";
+  };
+
+  if (showResultPage) {
+    return (
+      <div className="bg-[#a18aff] min-h-screen w-full flex">
+        {/* Sidebar */}
+        <aside className="h-screen w-24 bg-[#e5e0f7] flex flex-col items-center py-6 z-20">
+          <img src={logo} alt="Logo OS+" className="w-16 mb-6" />
+          {/* ... autres éléments de la sidebar ... */}
+        </aside>
+        {/* Contenu centré */}
+        <div className="flex-1 min-h-screen flex flex-col items-center justify-center">
+          <button
+            className="mb-6 px-6 py-2 bg-[#b6aaff] text-white rounded-full font-bold"
+            onClick={() => setShowResultPage(false)}
+          >
+            Retour
+          </button>
+          <div className="bg-white text-black p-6 rounded-lg shadow max-w-2xl w-full flex flex-col items-center justify-center">
+            <img src={logo} alt="Logo OS+" className="w-24 mb-4" />
+            <h2 className="text-xl font-bold mb-4">Résultat de la comparaison</h2>
+            {resultats && resultats.map((res, idx) => (
+              <div key={idx} className="mb-4 text-center">
+                <div className="font-bold">{res.filename}</div>
+                <div>Numéro BL détecté : <span className="font-mono">{res.bl_number || "Non trouvé"}</span></div>
+                <div>
+                  {res.found_in_facture
+                    ? <span className="text-green-600 font-bold">Présent dans la facture</span>
+                    : <span className="text-red-600 font-bold">Absent de la facture</span>
+                  }
+                </div>
+                {res.error && <div className="text-red-600">{res.error}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#a18aff] min-h-screen w-full flex">
@@ -347,21 +440,19 @@ export default function App() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Nom</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Nb fichiers</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Action</th>
                     </tr>
                   </thead>
                   <tbody className="bg-[#b6aaff] divide-y divide-[#e5e0f7]">
                     {filteredWorkspaces.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-6 py-4 text-center text-white/80">Aucun dossier trouvé.</td>
+                        <td colSpan={3} className="px-6 py-4 text-center text-white/80">Aucun dossier trouvé.</td>
                       </tr>
                     )}
                     {filteredWorkspaces.map((ws) => (
                       <tr key={ws.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-white font-bold">{ws.title}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-white">{ws.subtitle}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-white">{ws.documents.length}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
                             className="px-4 py-2 font-medium text-white bg-blue-600 rounded-md hover:bg-blue-500 focus:outline-none focus:shadow-outline-blue active:bg-blue-600 transition duration-150 ease-in-out"
@@ -429,113 +520,74 @@ export default function App() {
                     </button>
                   </>
                 )}
-                <button
-                  className="ml-auto bg-[#ffb6b6] hover:bg-[#ff8a8a] text-white rounded-full px-6 py-2 text-lg font-semibold transition"
-                  onClick={() => fileInputRef.current.click()}
-                >
-                  Déposer
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  style={{ display: "none" }}
-                  onChange={handleUpload}
-                />
-                <button
-  className="ml-2 bg-[#ffb6b6] hover:bg-[#ff8a8a] text-white rounded-full px-6 py-2 text-lg font-semibold transition"
-  onClick={handleUploadGlobalFacture}
->
-  Déposer facture globale
-</button>
-<input
-  type="file"
-  ref={fileInputGlobalRef}
-  style={{ display: "none" }}
-  onChange={handleUploadGlobalFactureFile}
-/>
+                <div className="flex gap-4 mb-6">
+                  <button
+                    className="bg-[#ffb6b6] hover:bg-[#ff8a8a] text-white rounded-full px-6 py-2 text-lg font-semibold transition"
+                    onClick={handleBlUploadClick}
+                  >
+                    Déposer
+                  </button>
+                  <input
+                    type="file"
+                    ref={blInputRef}
+                    style={{ display: "none" }}
+                    multiple
+                    onChange={handleBlFilesChange}
+                    accept=".pdf,.png,.jpg,.jpeg"
+                  />
+
+                  <button
+                    className="bg-[#ffb6b6] hover:bg-[#ff8a8a] text-white rounded-full px-6 py-2 text-lg font-semibold transition"
+                    onClick={handleFactureUploadClick}
+                  >
+                    Déposer facture globale
+                  </button>
+                  <input
+                    type="file"
+                    ref={factureInputRef}
+                    style={{ display: "none" }}
+                    onChange={handleFactureFileChange}
+                    accept=".pdf,.png,.jpg,.jpeg"
+                  />
+                </div>
               </div>
 
               <div className="flex gap-8">
-                {/* Documents déposés */}
                 <div className="flex-1 bg-[#b6aaff] rounded-xl p-8 mb-8">
                   <h3 className="text-xl font-semibold mb-4 text-white">Documents déposés</h3>
-                  {activeWs.documents.length === 0 && (
+                  {blFiles.length === 0 ? (
                     <p className="text-white/80">Aucun document pour l'instant.</p>
+                  ) : (
+                    <ul>
+                      {blFiles.map((file, idx) => (
+                        <li key={idx} className="text-white flex items-center justify-between">
+                          <span>{file.name}</span>
+                          <button
+                            className="ml-2 text-red-500 hover:text-red-700"
+                            title="Supprimer"
+                            onClick={() => {
+                              const confirmDelete = window.confirm("Es-tu sûr de vouloir supprimer ce dossier ?");
+                              if (confirmDelete) {
+                                setBlFiles(prev => prev.filter((_, i) => i !== idx));
+                              }
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                  
-                  {paginatedDocs.map((doc, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-4 mb-4 bg-[#a18aff] rounded-lg p-4 shadow border border-[#b6aaff]"
-                    >
-                      <div className="text-3xl text-white">📄</div>
-                      <div className="flex-1">
-                        {editingDocIdx === idx ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              className="rounded px-2 py-1"
-                              value={editingDocName}
-                              onChange={e => setEditingDocName(e.target.value)}
-                              autoFocus
-                            />
-                            <button
-                              className="text-green-600 font-bold"
-                              onClick={() => handleSaveDocName(idx)}
-                            >
-                              ✔️
-                            </button>
-                            <button
-                              className="text-red-600 font-bold"
-                              onClick={() => setEditingDocIdx(null)}
-                            >
-                              ✖️
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white">{doc.name}</span>
-                            <button
-                              className="text-yellow-300 hover:text-yellow-500"
-                              title="Renommer"
-                              onClick={() => handleEditDocName(idx)}
-                            >
-                              ✏️
-                            </button>
-                          </div>
-                        )}
-                        <div className="text-white/80 text-sm">{doc.description}</div>
-                        <div className="text-[#e5e0f7] text-xs">{doc.date}</div>
-                      </div>
-                      <button
-                        className="ml-2 text-red-500 hover:text-red-700 text-xl"
-                        title="Supprimer"
-                        onClick={() => handleDeleteDoc((currentPage - 1) * docsPerPage + idx)}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  ))}
                 </div>
-                {/* Facture globale déposée */}
                 <div className="flex-1 bg-[#b6aaff] rounded-xl p-8 mb-8">
                   <h3 className="text-xl font-semibold mb-4 text-white">Facture globale déposée</h3>
-                  {activeWs.globalFacture ? (
-                    <div className="flex items-center gap-4 bg-[#a18aff] rounded-lg p-4 shadow border border-[#b6aaff]">
-                      <div className="text-3xl text-white">📄</div>
-                      <div>
-                        <div className="font-bold text-white">{activeWs.globalFacture.name}</div>
-                        <div className="text-[#e5e0f7] text-xs">{activeWs.globalFacture.date}</div>
-                      </div>
+                  {factureFile ? (
+                    <div className="text-white flex items-center justify-between">
+                      <span>{factureFile.name}</span>
                       <button
-                        className="ml-2 text-red-500 hover:text-red-700 text-xl"
+                        className="ml-2 text-red-500 hover:text-red-700"
                         title="Supprimer"
-                        onClick={() =>
-                          setWorkspaces((prev) =>
-                            prev.map((ws) =>
-                              ws.id === activeId ? { ...ws, globalFacture: null } : ws
-                            )
-                          )
-                        }
+                        onClick={() => setFactureFile(null)}
                       >
                         🗑️
                       </button>
@@ -544,15 +596,29 @@ export default function App() {
                     <p className="text-white/80">Vous n'avez pas encore déposé la facture globale.</p>
                   )}
                 </div>
-                
               </div>
+
 
               {/* Traiter button */}
               <div className="flex justify-center">
-                <button className="bg-white text-[#a18aff] rounded-full px-12 py-3 text-lg font-bold hover:bg-[#b6aaff] hover:text-white transition" onClick={() => { handleTraiter(); setShowOcr(true); }}>
+                <button
+                  className="bg-white text-[#a18aff] rounded-full px-12 py-3 text-lg font-bold hover:bg-[#b6aaff] hover:text-white transition"
+                  onClick={handleTraiter}
+                >
                   Traiter
                 </button>
               </div>
+              {loading && (
+                <div className="w-full flex justify-center mt-4">
+                  <div className="w-1/2 bg-white rounded-full h-4 overflow-hidden">
+                    <div
+                      className="bg-[#b6aaff] h-4 transition-all duration-200"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                  <span className="ml-4 text-white font-bold">{progress}%</span>
+                </div>
+              )}
             </>
           }
           <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
@@ -570,6 +636,49 @@ export default function App() {
               </div>
             </div>
           )}
+          {showComparePage ? (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-[#a18aff]">
+              <button
+                className="mb-6 px-6 py-2 bg-[#b6aaff] text-white rounded-full font-bold"
+                onClick={() => setShowComparePage(false)}
+              >
+                Retour
+              </button>
+              <div className="bg-white text-black p-6 rounded-lg shadow max-w-2xl w-full">
+                <h2 className="text-xl font-bold mb-4">Résultat de la comparaison</h2>
+                {compareResult && (
+                  <>
+                    {compareResult.ok ? (
+                      <div className="text-green-600 font-bold">Tout est OK !</div>
+                    ) : (
+                      <>
+                        {compareResult.manquants.length > 0 && (
+                          <div>
+                            <span className="font-bold text-red-600">Manquants :</span>
+                            <ul>
+                              {compareResult.manquants.map((ref, idx) => (
+                                <li key={idx}>{ref}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {compareResult.en_trop.length > 0 && (
+                          <div>
+                            <span className="font-bold text-orange-600">En trop :</span>
+                            <ul>
+                              {compareResult.en_trop.map((ref, idx) => (
+                                <li key={idx}>{ref}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
         </main>
       </div>
     </div>

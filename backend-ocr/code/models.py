@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey, Numeric, Text
 from sqlalchemy.orm import declarative_base, relationship
 
+
 Base = declarative_base()
 
 class Client(Base):
@@ -44,3 +45,12 @@ class LigneFacture(Base):
     total_ttc = Column(Numeric)
     facture = relationship("Facture", back_populates="lignes")
     produit = relationship("Produit", back_populates="lignes")
+
+
+class Document(Base):
+    __tablename__ = "document"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    ocr = Column(Text)
+
