@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import logo from "./assets/logo-osplus.png";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -67,35 +67,21 @@ function Pagination({ current, total, onPageChange }) {
       >
         Suivant &rarr;
       </button>
-    </div>
+      </div>
   );
 }
 
 export default function App() {
-  // Démarre avec aucun workspace par défaut
-  
+  // États pour la persistance
   const [workspaces, setWorkspaces] = useState([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [editTitle, setEditTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
   const [subtitleInput, setSubtitleInput] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
+  const [showSearch, setShowSearch] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const fileInputRef = useRef();
-  const fileInputGlobalRef = useRef();
-  const [globalFacture, setGlobalFacture] = useState(null);
-  const [ocrText, setOcrText] = useState("");
-  const [showOcr, setShowOcr] = useState(false);
-  const [editingDocIdx, setEditingDocIdx] = useState(null);
-  const [editingDocName, setEditingDocName] = useState("");
-  const [showOcrPage, setShowOcrPage] = useState(false);
-  const [bonsFiles, setBonsFiles] = useState([]);
-  const [globalFile, setGlobalFile] = useState(null);
-  const [compareResult, setCompareResult] = useState(null);
-  const [showComparePage, setShowComparePage] = useState(false);
-  const [blFiles, setBlFiles] = useState([]);
-  const [factureFile, setFactureFile] = useState(null);
   const [resultats, setResultats] = useState(null);
   const [showResultPage, setShowResultPage] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -103,101 +89,129 @@ export default function App() {
 
   const blInputRef = useRef();
   const factureInputRef = useRef();
-  const bonInputRef = useRef();
-  const globalInputRef = useRef();
+
+  // Charger les workspaces au démarrage
+  useEffect(() => {
+    loadWorkspaces();
+  }, []);
+
+  // Charger les workspaces depuis l'API
+  const loadWorkspaces = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/workspaces/');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkspaces(data);
+        if (data.length > 0 && !activeId) {
+          setActiveId(data[0].id);
+          setCurrentWorkspace(data[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des workspaces:', error);
+    }
+  };
+
+  // Charger un workspace spécifique avec ses documents
+  const loadWorkspace = async (workspaceId) => {
+    try {
+      const response = await fetch(`http://localhost:8000/workspaces/${workspaceId}`);
+      if (response.ok) {
+        const workspace = await response.json();
+        setCurrentWorkspace(workspace);
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement du workspace:', error);
+    }
+  };
 
   // Si aucun workspace, activeWs est undefined
-  const activeWs = workspaces.find((w) => w.id === activeId);
+  const activeWs = currentWorkspace;
   const docsPerPage = 5;
-  const totalDocs = activeWs ? activeWs.documents.length : 0;
+  const totalDocs = activeWs && Array.isArray(activeWs.documents) ? activeWs.documents.length : 0;
   const totalPages = Math.ceil(totalDocs / docsPerPage);
-  const paginatedDocs = activeWs ? activeWs.documents.slice(
-    (currentPage - 1) * docsPerPage,
-    currentPage * docsPerPage
-  ) : [];
+  const paginatedDocs = activeWs && Array.isArray(activeWs.documents)
+    ? activeWs.documents.slice((currentPage - 1) * docsPerPage, currentPage * docsPerPage)
+    : [];
 
   // Récupère tous les documents de tous les workspaces
   const allDocuments = workspaces.flatMap(ws =>
-    ws.documents.map(doc => ({ ...doc, wsTitle: ws.title, wsId: ws.id }))
+    ws.documents ? ws.documents.map(doc => ({ ...doc, wsTitle: ws.title, wsId: ws.id })) : []
   );
 
   // Créer un nouveau workspace vide
-  const handleNewWorkspace = () => {
-    const newId = Date.now();
-    const newWs = {
-      id: newId,
-      title: "Nouveau titre",
-      subtitle: "Date",
-      documents: [],
-      globalFacture: null,
-    };
-    setWorkspaces([newWs, ...workspaces]);
-    setActiveId(newId);
-    setEditTitle(true);
-    setTitleInput("");
-    setSubtitleInput("");
-    setShowSearch(false);
-    setCurrentPage(1);
-    setBlFiles([]);         // <-- Ajoute ceci
-    setFactureFile(null);   // <-- Et ceci
+  const handleNewWorkspace = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/workspaces/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: "Nouveau titre",
+          subtitle: new Date().toISOString().slice(0, 10)
+        })
+      });
+      
+      if (response.ok) {
+        const newWorkspace = await response.json();
+        setWorkspaces(prev => [newWorkspace, ...prev]);
+        setActiveId(newWorkspace.id);
+        setCurrentWorkspace(newWorkspace);
+        setEditTitle(true);
+        setTitleInput("");
+        setSubtitleInput("");
+        setShowSearch(false);
+        setCurrentPage(1);
+      } else {
+        console.error('Erreur lors de la création du workspace');
+        alert('Erreur lors de la création du workspace');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création du workspace:', error);
+      alert('Erreur lors de la création du workspace: ' + error.message);
+    }
   };
 
   // Changer de workspace
-  const handleSelectWorkspace = (id) => {
+  const handleSelectWorkspace = async (id) => {
     setActiveId(id);
     setEditTitle(false);
     setShowSearch(false);
     setCurrentPage(1);
+    await loadWorkspace(id);
   };
 
   // Supprimer un workspace
-  const handleDeleteWorkspace = (id) => {
+  const handleDeleteWorkspace = async (id) => {
     const confirmDelete = window.confirm("Es-tu sûr de vouloir supprimer ce dossier ?");
     if (!confirmDelete) return;
     
-    const idx = workspaces.findIndex((ws) => ws.id === id);
-    const newWorkspaces = workspaces.filter((ws) => ws.id !== id);
-    setWorkspaces(newWorkspaces);
-    if (id === activeId) {
-      if (newWorkspaces.length >= 0) {
-        const next = newWorkspaces[Math.min(idx, newWorkspaces.length - 1)];
-        setActiveId(next.id);
-      }
-    }
-    setShowSearch(false);
-  };
-
-  // Upload d'un document dans le workspace actif
-  const handleUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const response = await fetch('http://localhost:8000/upload', {
-        method: 'POST',
-        body: formData,
+      const response = await fetch(`http://localhost:8000/workspaces/${id}`, {
+        method: 'DELETE'
       });
-      const data = await response.json();
+      
       if (response.ok) {
-        // Ajoute le fichier à l'état local pour l'afficher dans la liste
-        setWorkspaces((prev) =>
-          prev.map((ws) =>
-            ws.id === activeId
-              ? { ...ws, documents: [{ name: data.filename, date: new Date().toLocaleString(), ocr: data.ocr }, ...ws.documents] }
-              : ws
-          )
-        );
-        alert('Fichier envoyé avec succès !');
-      } else {
-        alert('Erreur : ' + data.error);
+        const newWorkspaces = workspaces.filter((ws) => ws.id !== id);
+        setWorkspaces(newWorkspaces);
+        if (id === activeId) {
+          if (newWorkspaces.length > 0) {
+            const next = newWorkspaces[0];
+            setActiveId(next.id);
+            setCurrentWorkspace(next);
+          } else {
+            setActiveId(null);
+            setCurrentWorkspace(null);
+            setShowSearch(true);
+          }
+        }
+        setShowSearch(false);
       }
-    } catch (e) {
-      alert('Erreur de connexion au serveur.');
+    } catch (error) {
+      console.error('Erreur lors de la suppression du workspace:', error);
     }
   };
-  
 
   // Edition du titre/sous-titre
   const handleEditTitle = () => {
@@ -205,15 +219,29 @@ export default function App() {
     setTitleInput(activeWs.title);
     setSubtitleInput(activeWs.subtitle);
   };
-  const handleSaveTitle = () => {
-    setWorkspaces((prev) =>
-      prev.map((ws) =>
-        ws.id === activeId
-          ? { ...ws, title: titleInput, subtitle: subtitleInput }
-          : ws
-      )
-    );
-    setEditTitle(false);
+
+  const handleSaveTitle = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/workspaces/${activeId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: titleInput,
+          subtitle: subtitleInput
+        })
+      });
+      
+      if (response.ok) {
+        const updatedWorkspace = await response.json();
+        setWorkspaces(prev => prev.map(ws => ws.id === activeId ? updatedWorkspace : ws));
+        setCurrentWorkspace(updatedWorkspace);
+        setEditTitle(false);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du workspace:', error);
+    }
   };
 
   // Recherche filtrée pour dossiers
@@ -221,64 +249,113 @@ export default function App() {
     ws.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Recherche filtrée pour documents (si tu veux garder la recherche de documents)
+  // Recherche filtrée pour documents
   const filteredDocs = allDocuments.filter(doc =>
     doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     doc.wsTitle.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Supprimer un document du workspace actif
-  const handleDeleteDoc = (docIdx) => {
+  const handleDeleteDoc = async (docId) => {
     const confirmDelete = window.confirm("Es-tu sûr de vouloir supprimer ce fichier ?");
     if (!confirmDelete) return;
     
-    if (docIdx === "global") {
-      setWorkspaces((prev) =>
-        prev.map((ws) =>
-          ws.id === activeId ? { ...ws, globalFacture: null } : ws
-        )
-      );
+    try {
+      const response = await fetch(`http://localhost:8000/documents/${docId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        // Recharger le workspace pour avoir les données à jour
+        await loadWorkspace(activeId);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression du document:', error);
+    }
+  };
+
+  const handleBlUploadClick = () => blInputRef.current.click();
+  const handleFactureUploadClick = () => factureInputRef.current.click();
+
+  const handleBlFilesChange = async (e) => {
+    if (!activeId) {
+      alert("Veuillez d'abord créer ou sélectionner un workspace");
       return;
     }
+
+    const files = Array.from(e.target.files);
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const response = await fetch(`http://localhost:8000/workspaces/${activeId}/documents/`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (response.ok) {
+          // Recharger le workspace pour avoir les données à jour
+          await loadWorkspace(activeId);
+        } else {
+          alert(`Erreur lors de l'upload de ${file.name}`);
+        }
+      } catch (error) {
+        console.error('Erreur lors de l\'upload:', error);
+        alert(`Erreur lors de l'upload de ${file.name}`);
+      }
+    }
+    e.target.value = "";
+  };
+
+  const handleFactureFileChange = async (e) => {
+    if (!activeId) {
+      alert("Veuillez d'abord créer ou sélectionner un workspace");
+      return;
+    }
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
     
-    setWorkspaces((prev) =>
-      prev.map((ws) =>
-        ws.id === activeId
-          ? { ...ws, documents: ws.documents.filter((_, idx) => idx !== docIdx) }
-          : ws
-      )
-    );
-  };
-
-  const handleUploadGlobalFacture = () => {
-    fileInputGlobalRef.current.click();
-  };
-
-  const handleUploadGlobalFactureFile = (event) => {
-    const file = event.target.files[0];
-    const confirmDelete = window.confirm("Es-tu sûr de vouloir supprimer ce dossier ?");
-    if (!file) return;
-    setWorkspaces((prev) =>
-      prev.map((ws) =>
-        ws.id === activeId
-          ? { ...ws, globalFacture: { name: file.name, date: new Date().toLocaleString() } }
-          : ws
-      )
-    );
-    event.target.value = "";
-  };
-
-  const handleUploadBon = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    setBonsFiles(prev => [...prev, file]);
+    try {
+      const response = await fetch(`http://localhost:8000/workspaces/${activeId}/facture-globale/`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (response.ok) {
+        // Recharger le workspace pour avoir les données à jour
+        await loadWorkspace(activeId);
+      } else {
+        const errorData = await response.json();
+        alert(`Erreur: ${errorData.detail}`);
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'upload:', error);
+      alert(`Erreur lors de l'upload de ${file.name}`);
+    }
+    e.target.value = "";
   };
 
   const handleTraiter = async () => {
-    if (!blFiles.length || !factureFile) {
-      alert("Dépose au moins un bon de livraison et une facture globale !");
+    if (!activeId) {
+      alert("Veuillez d'abord créer ou sélectionner un workspace");
       return;
     }
+
+    if (!currentWorkspace || !currentWorkspace.documents || currentWorkspace.documents.length === 0) {
+      alert("Dépose au moins un bon de livraison !");
+      return;
+    }
+
+    if (!currentWorkspace.factures_globales || currentWorkspace.factures_globales.length === 0) {
+      alert("Dépose une facture globale !");
+      return;
+    }
+
     setLoading(true);
     setProgress(0);
 
@@ -289,106 +366,72 @@ export default function App() {
       setProgress(Math.min(fakeProgress, 95));
     }, 200);
 
-    const formData = new FormData();
-    blFiles.forEach(file => formData.append("bl_files", file));
-    formData.append("facture_file", factureFile);
-
-    const res = await fetch("http://localhost:8000/check_bl_in_facture", {
-      method: "POST",
-      body: formData,
-    });
-    const data = await res.json();
-
-    clearInterval(interval);
-    setProgress(100);
-    setTimeout(() => {
+    try {
+      const response = await fetch(`http://localhost:8000/workspaces/${activeId}/check-bl-in-facture`, {
+        method: "POST",
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        clearInterval(interval);
+        setProgress(100);
+        setTimeout(() => {
+          setLoading(false);
+          setResultats(data);
+          setShowResultPage(true);
+          setProgress(0);
+        }, 500);
+      } else {
+        const errorData = await response.json();
+        clearInterval(interval);
+        setLoading(false);
+        setProgress(0);
+        alert(`Erreur: ${errorData.detail}`);
+      }
+    } catch (error) {
+      clearInterval(interval);
       setLoading(false);
-      setResultats(data);
-      setShowResultPage(true);
       setProgress(0);
-    }, 500); // petit délai pour voir la barre à 100%
+      alert("Erreur lors du traitement : " + error.message);
+    }
   };
 
-  const handleEditDocName = (idx) => {
-    setEditingDocIdx(idx);
-    setEditingDocName(paginatedDocs[idx].name);
-  };
+if (showResultPage) {
+  return (
+    <div className="bg-[#a18aff] min-h-screen w-full flex">
+      <aside className="h-screen w-24 bg-[#e5e0f7] flex flex-col items-center py-6 z-20">
+        <img src={logo} alt="Logo OS+" className="w-16 mb-6" />
+      </aside>
 
-  const handleSaveDocName = (docIdx) => {
-    setWorkspaces((prev) =>
-      prev.map((ws) =>
-        ws.id === activeId
-          ? {
-              ...ws,
-              documents: ws.documents.map((doc, idx) =>
-                idx === (currentPage - 1) * docsPerPage + docIdx
-                  ? { ...doc, name: editingDocName }
-                  : doc
-              ),
-            }
-          : ws
-      )
-    );
-    setEditingDocIdx(null);
-    setEditingDocName("");
-  };
-
-  const handleUploadGlobal = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    setGlobalFile(file);
-  };
-
-  const handleBlUploadClick = () => blInputRef.current.click();
-  const handleFactureUploadClick = () => factureInputRef.current.click();
-
-  const handleBlFilesChange = (e) => {
-    setBlFiles(prev => [...prev, ...Array.from(e.target.files)]);
-    e.target.value = "";
-  };
-
-  const handleFactureFileChange = (e) => {
-    setFactureFile(e.target.files[0]);
-    e.target.value = "";
-  };
-
-  if (showResultPage) {
-    return (
-      <div className="bg-[#a18aff] min-h-screen w-full flex">
-        {/* Sidebar */}
-        <aside className="h-screen w-24 bg-[#e5e0f7] flex flex-col items-center py-6 z-20">
-          <img src={logo} alt="Logo OS+" className="w-16 mb-6" />
-          {/* ... autres éléments de la sidebar ... */}
-        </aside>
-        {/* Contenu centré */}
-        <div className="flex-1 min-h-screen flex flex-col items-center justify-center">
-          <button
-            className="mb-6 px-6 py-2 bg-[#b6aaff] text-white rounded-full font-bold"
-            onClick={() => setShowResultPage(false)}
-          >
-            Retour
-          </button>
-          <div className="bg-white text-black p-6 rounded-lg shadow max-w-2xl w-full flex flex-col items-center justify-center">
-            <img src={logo} alt="Logo OS+" className="w-24 mb-4" />
-            <h2 className="text-xl font-bold mb-4">Résultat de la comparaison</h2>
-            {resultats && resultats.map((res, idx) => (
-              <div key={idx} className="mb-4 text-center">
-                <div className="font-bold">{res.filename}</div>
-                <div>Numéro BL détecté : <span className="font-mono">{res.bl_number || "Non trouvé"}</span></div>
-                <div>
-                  {res.found_in_facture
-                    ? <span className="text-green-600 font-bold">Présent dans la facture</span>
-                    : <span className="text-red-600 font-bold">Absent de la facture</span>
-                  }
-                </div>
-                {res.error && <div className="text-red-600">{res.error}</div>}
+      <div className="flex-1 min-h-screen flex flex-col items-center justify-center gap-8 p-12">
+        <div className="bg-white text-black p-8 rounded-lg shadow max-w-md w-full flex flex-col items-center gap-4 ml-24">
+      
+          <img src={logo} alt="Logo OS+" className="w-24 mb-4" />
+          <h2 className="text-xl font-bold mb-4 text-center">Résultat de la comparaison</h2>
+          {resultats && resultats.map((res, idx) => (
+            <div key={idx} className="mb-4 text-center">
+              <div className="font-bold">{res.filename}</div>
+              <div>Numéro BL détecté : <span className="font-mono">{res.bl_number || "Non trouvé"}</span></div>
+              <div>
+                {res.found_in_facture
+                  ? <span className="text-green-600 font-bold">Présent dans la facture</span>
+                  : <span className="text-red-600 font-bold">Absent de la facture</span>
+                }
               </div>
-            ))}
-          </div>
+              {res.error && <div className="text-red-600">{res.error}</div>}
+            </div>
+          ))}
         </div>
+        <button
+          className="mt-17 px-10 py-8 bg-[#b6aaff] text-white rounded-full font-bold justify-center "
+          onClick={() => setShowResultPage(false)}
+        >
+          Retour
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="bg-[#a18aff] min-h-screen w-full flex">
@@ -479,7 +522,7 @@ export default function App() {
                 Retour
               </button>
             </div>
-          ) : 
+          ) : (
             <>
               <div className="flex items-center gap-6 mb-8">
                 {editTitle ? (
@@ -508,17 +551,16 @@ export default function App() {
                     </button>
                   </>
                 ) : (
-                  <>
-                    <h2 className="text-3xl font-bold text-white">{activeWs.title}</h2>
-                    <p className="text-lg text-[#e5e0f7]">{activeWs.subtitle}</p>
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-bold text-white">{activeWs?.title}</span>
+                    <span className="text-white/80">{activeWs?.subtitle}</span>
                     <button
-                      className="bg-[#b6aaff] hover:bg-[#a18aff] text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition"
-                      title="Modifier le titre"
+                      className="ml-4 bg-[#b6aaff] hover:bg-[#a18aff] text-white rounded-lg px-4 py-2 text-lg transition"
                       onClick={handleEditTitle}
                     >
-                      🖉
+                      ✏️ Modifier
                     </button>
-                  </>
+                  </div>
                 )}
                 <div className="flex gap-4 mb-6">
                   <button
@@ -552,58 +594,68 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex gap-8">
-                <div className="flex-1 bg-[#b6aaff] rounded-xl p-8 mb-8">
-                  <h3 className="text-xl font-semibold mb-4 text-white">Documents déposés</h3>
-                  {blFiles.length === 0 ? (
-                    <p className="text-white/80">Aucun document pour l'instant.</p>
-                  ) : (
-                    <ul>
-                      {blFiles.map((file, idx) => (
-                        <li key={idx} className="text-white flex items-center justify-between">
-                          <span>{file.name}</span>
-                          <button
-                            className="ml-2 text-red-500 hover:text-red-700"
-                            title="Supprimer"
-                            onClick={() => {
-                              const confirmDelete = window.confirm("Es-tu sûr de vouloir supprimer ce dossier ?");
-                              if (confirmDelete) {
-                                setBlFiles(prev => prev.filter((_, i) => i !== idx));
-                              }
-                            }}
-                          >
-                            🗑️
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div className="flex-1 bg-[#b6aaff] rounded-xl p-8 mb-8">
-                  <h3 className="text-xl font-semibold mb-4 text-white">Facture globale déposée</h3>
-                  {factureFile ? (
-                    <div className="text-white flex items-center justify-between">
-                      <span>{factureFile.name}</span>
-                      <button
-                        className="ml-2 text-red-500 hover:text-red-700"
-                        title="Supprimer"
-                        onClick={() => setFactureFile(null)}
+              <div className="flex-1 bg-[#b6aaff] rounded-xl p-8 mb-8">
+                <h3 className="text-xl font-semibold mb-4 text-white">Bons de livraison déposés</h3>
+                <ul>
+                  {activeWs?.documents && activeWs.documents.map((doc, idx) => (
+                    <li key={doc.id} className="text-white flex items-center justify-between">
+                      <a
+                        href={`http://localhost:8000/uploads/workspace_${activeWs.id}/${doc.original_filename}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
                       >
-                        🗑️
-                      </button>
+                        {doc.original_filename}
+                      </a>
+                      <div className="flex gap-2">
+                        <button
+                          className="text-red-500 hover:text-red-700"
+                          title="Supprimer"
+                          onClick={() => handleDeleteDoc(doc.id)}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                  {(!activeWs?.documents || activeWs.documents.length === 0) && (
+                    <li className="text-white/80">Aucun bon de livraison déposé.</li>
+                  )}
+                </ul>
+              </div>
+              <div className="flex-1 bg-[#b6aaff] rounded-xl p-8 mb-8">
+                <h3 className="text-xl font-semibold mb-4 text-white">Facture globale déposée</h3>
+                <div>
+                  {activeWs?.factures_globales && activeWs.factures_globales.length > 0 ? (
+                    <div className="text-white flex items-center justify-between">
+                      <a
+                        href={`http://localhost:8000/uploads/workspace_${activeWs.id}/${activeWs.factures_globales[0].original_filename}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        {activeWs.factures_globales[0].original_filename}
+                      </a>
+                      <div className="flex gap-2">
+                        <button
+                          className="ml-2 text-red-500 hover:text-red-700"
+                          title="Supprimer"
+                          onClick={() => handleDeleteDoc(activeWs.factures_globales[0].id)}
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <p className="text-white/80">Vous n'avez pas encore déposé la facture globale.</p>
                   )}
                 </div>
               </div>
-
-
-              {/* Traiter button */}
               <div className="flex justify-center">
                 <button
-                  className="bg-white text-[#a18aff] rounded-full px-12 py-3 text-lg font-bold hover:bg-[#b6aaff] hover:text-white transition"
+                  className="bg-white text-[#a18aff] rounded-full px-12 py-3 text-lg font-bold hover:bg-[#b6aaff] hover:text-white transition disabled:opacity-50"
                   onClick={handleTraiter}
+                  disabled={!activeWs || !activeWs.documents || activeWs.documents.length === 0 || !activeWs.factures_globales || activeWs.factures_globales.length === 0 || loading}
                 >
                   Traiter
                 </button>
@@ -620,65 +672,10 @@ export default function App() {
                 </div>
               )}
             </>
-          }
-          <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
-          {showOcr && (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#a18aff]">
-              <button
-                className="mb-6 px-6 py-2 bg-[#b6aaff] text-white rounded-full font-bold"
-                onClick={() => setShowOcr(false)}
-              >
-                Retour
-              </button>
-              <div className="bg-white text-black p-6 rounded-lg shadow max-w-2xl w-full">
-                <h2 className="text-xl font-bold mb-4">Transcription OCR</h2>
-                <pre className="whitespace-pre-wrap">{ocrText}</pre>
-              </div>
-            </div>
           )}
-          {showComparePage ? (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#a18aff]">
-              <button
-                className="mb-6 px-6 py-2 bg-[#b6aaff] text-white rounded-full font-bold"
-                onClick={() => setShowComparePage(false)}
-              >
-                Retour
-              </button>
-              <div className="bg-white text-black p-6 rounded-lg shadow max-w-2xl w-full">
-                <h2 className="text-xl font-bold mb-4">Résultat de la comparaison</h2>
-                {compareResult && (
-                  <>
-                    {compareResult.ok ? (
-                      <div className="text-green-600 font-bold">Tout est OK !</div>
-                    ) : (
-                      <>
-                        {compareResult.manquants.length > 0 && (
-                          <div>
-                            <span className="font-bold text-red-600">Manquants :</span>
-                            <ul>
-                              {compareResult.manquants.map((ref, idx) => (
-                                <li key={idx}>{ref}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {compareResult.en_trop.length > 0 && (
-                          <div>
-                            <span className="font-bold text-orange-600">En trop :</span>
-                            <ul>
-                              {compareResult.en_trop.map((ref, idx) => (
-                                <li key={idx}>{ref}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          ) : null}
+          {totalPages > 1 && (
+            <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
+          )}
         </main>
       </div>
     </div>

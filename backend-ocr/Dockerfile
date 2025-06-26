@@ -5,6 +5,8 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     libtesseract-dev \
     libleptonica-dev \
+    libpq-dev \
+    gcc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
