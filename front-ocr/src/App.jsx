@@ -359,7 +359,6 @@ export default function App() {
     setLoading(true);
     setProgress(0);
 
-    // Simule la progression (pour l'effet visuel)
     let fakeProgress = 0;
     const interval = setInterval(() => {
       fakeProgress += Math.floor(Math.random() * 10) + 5;
@@ -367,17 +366,17 @@ export default function App() {
     }, 200);
 
     try {
-      const response = await fetch(`http://localhost:8000/workspaces/${activeId}/check-bl-in-facture`, {
+      const response = await fetch(`http://localhost:8000/workspaces/${activeId}/check-facture-in-bl`, {
         method: "POST",
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         clearInterval(interval);
         setProgress(100);
         setTimeout(() => {
           setLoading(false);
-          setResultats(data);
+          setResultats(data); // data est l'objet complet
           setShowResultPage(true);
           setProgress(0);
         }, 500);
@@ -408,19 +407,25 @@ if (showResultPage) {
       
           <img src={logo} alt="Logo OS+" className="w-24 mb-4" />
           <h2 className="text-xl font-bold mb-4 text-center">Résultat de la comparaison</h2>
-          {resultats && resultats.map((res, idx) => (
-            <div key={idx} className="mb-4 text-center">
-              <div className="font-bold">{res.filename}</div>
-              <div>Numéro BL détecté : <span className="font-mono">{res.bl_number || "Non trouvé"}</span></div>
-              <div>
-                {res.found_in_facture
-                  ? <span className="text-green-600 font-bold">Présent dans la facture</span>
-                  : <span className="text-red-600 font-bold">Absent de la facture</span>
-                }
-              </div>
-              {res.error && <div className="text-red-600">{res.error}</div>}
-            </div>
-          ))}
+          {resultats && (
+  <div className="w-full">
+    <div className="mb-4 text-center">
+      <div className="font-bold">Facture analysée : {resultats.facture_file}</div>
+      <div className="text-sm text-gray-700">Numéros BL détectés : {resultats.bl_numbers_detected.join(", ")}</div>
+    </div>
+    {resultats.results.map((res, idx) => (
+      <div key={idx} className="mb-4 text-center">
+        <div>Numéro BL : <span className="font-mono">{res.bl_number}</span></div>
+        <div>
+          {res.found_in_documents
+            ? <span className="text-green-600 font-bold">Présent dans les BL déposés</span>
+            : <span className="text-red-600 font-bold">Absent des BL déposés</span>
+          }
+        </div>
+      </div>
+    ))}
+  </div>
+)}
         </div>
         <button
           className="mt-17 px-10 py-8 bg-[#b6aaff] text-white rounded-full font-bold justify-center "

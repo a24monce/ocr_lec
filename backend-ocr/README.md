@@ -42,7 +42,7 @@ pip install -r requirements.txt
 python init_db.py
 
 # Démarrer l'application
-uvicorn code.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## API Endpoints
