@@ -4,12 +4,12 @@ Script d'initialisation de la base de données
 """
 import sys
 import os
-
+from app.db.database import engine
+from app.models.workspace import Base
 # Ajouter le répertoire code au path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'code'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'app'))
 
-from code.database import engine
-from code.models import Base
+
 
 def init_database():
     """Créer toutes les tables de la base de données"""
