@@ -28,18 +28,14 @@ def extract_references_from_text(text: str) -> set:
     return references
 
 # --- Fonction d'extraction des numéros de BL depuis une facture ---
-def extract_bl_numbers_from_facture(file_bytes: bytes) -> List[str]:
-    images = convert_from_bytes(file_bytes)
-    bl_numbers = set()
-    for image in images:
-        text = pytesseract.image_to_string(image)
-        lines = text.splitlines()
-        for line in lines:
-            if "luxottica" in line.lower() or "kering" in line.lower():
-                match = re.search(r"\b\d{8,12}\b", line)
-                if match:
-                    bl_numbers.add(match.group(0))
-    return list(bl_numbers)
+def extract_bl_numbers_from_facture(text: str) -> List[str]:
+    bl_numbers = []
+    pattern = r"(KERING EYEWEAR|LUXOTTICA)[^\d]*(\d{8,12})"
+    for line in text.splitlines():
+        match = re.search(pattern, line, re.IGNORECASE)
+        if match:
+            bl_numbers.append(match.group(2))
+    return bl_numbers
 
 # --- Fonction d'extraction OCR brut depuis un PDF ---
 def extract_text_from_pdf(file_bytes: bytes) -> str:

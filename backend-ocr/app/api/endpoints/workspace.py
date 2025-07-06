@@ -7,50 +7,44 @@ from PIL import Image
 import pytesseract
 import os
 from datetime import datetime
+from typing import List
 
 router = APIRouter()
 
 @router.post("/workspaces/{workspace_id}/check-facture-in-bl")
-async def check_facture_in_bl(
-    workspace_id: int,
-    db: Session = Depends(get_db)
+
+async def check_bl_in_facture(
+    facture_file: UploadFile = File(...),
+    bl_files: List[UploadFile] = File(...)
 ):
-    # Vérifier workspace et facture
-    workspace = workspace.get_workspace(db, workspace_id=workspace_id)
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+    # Vérifier la présence des fichiers
+    if not facture_file or not bl_files:
+        raise HTTPException(status_code=400, detail="Veuillez déposer la facture globale et les bons de livraison.")
 
-    facture_globale = FactureGlobale.get_facture_globale_by_workspace(db, workspace_id=workspace_id)
-    if not facture_globale:
-        raise HTTPException(status_code=400, detail="Aucune facture globale trouvée")
-
-    # Extraire les numéros de BL de la facture
-    with open(facture_globale.file_path, 'rb') as f:
-        facture_bytes = f.read()
-    bl_numbers = extract_bl_numbers_from_facture(facture_bytes)
-
+    # OCR sur la facture globale
+    facture_bytes = await facture_file.read()
+    facture_text = extract_text_from_pdf(facture_bytes)
+    bl_numbers = extract_bl_numbers_from_facture(facture_text)
     if not bl_numbers:
-        raise HTTPException(status_code=400, detail="Aucun numéro de BL détecté dans la facture")
+        raise HTTPException(status_code=400, detail="Aucun numéro de BL détecté après le nom du fournisseur dans la facture.")
 
-    # Parcourir les documents (bons de livraison) et chercher les BL
-    documents = document.get_documents_by_workspace(db, workspace_id=workspace_id)
+    # Lire tous les BL uploadés
+    bl_texts = []
+    for bl_file in bl_files:
+        bl_bytes = await bl_file.read()
+        bl_texts.append(extract_text_from_pdf(bl_bytes).replace(" ", ""))
+
+    # Chercher chaque numéro de BL dans les fichiers BL
     results = []
-
     for bl_number in bl_numbers:
-        found = False
-        for document in documents:
-            with open(document.file_path, 'rb') as f:
-                bl_text = extract_text_from_pdf(f.read()).replace(" ", "")
-                if bl_number.replace(" ", "") in bl_text:
-                    found = True
-                    break
+        found = any(bl_number.replace(" ", "") in bl_text for bl_text in bl_texts)
         results.append({
             "bl_number": bl_number,
             "found_in_documents": found
         })
 
     return {
-        "facture_file": facture_globale.original_filename,
+        "facture_file": facture_file.filename,
         "bl_numbers_detected": bl_numbers,
         "results": results
     }

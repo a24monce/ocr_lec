@@ -6,7 +6,8 @@ from app.utils.file_handlers import extract_bl_numbers_from_facture, extract_tex
 from PIL import Image
 import pytesseract
 import os
-from datetime import datetime   
+from datetime import datetime
+from typing import List
 
 router = APIRouter()
 
@@ -24,4 +25,6 @@ async def upload_file(file: UploadFile = File(...)):
         ocr_text = pytesseract.image_to_string(image, lang='fra+eng')
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
-    return {"message": "File uploaded successfully", "filename": filename, "ocr": ocr_text} 
+    return {"message": "File uploaded successfully", "filename": filename, "ocr": ocr_text}
+
+

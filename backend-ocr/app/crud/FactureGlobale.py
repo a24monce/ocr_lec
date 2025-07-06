@@ -5,6 +5,7 @@ from typing import List, Optional
 import os
 import shutil
 from datetime import datetime
+from fastapi import HTTPException
 
 
 # CRUD pour les Factures Globales
@@ -16,7 +17,14 @@ def create_facture_globale(db: Session, facture: FactureGlobaleCreate) -> Factur
     return db_facture
 
 def get_facture_globale_by_workspace(db: Session, workspace_id: int) -> Optional[FactureGlobale]:
-    return db.query(FactureGlobale).filter(FactureGlobale.workspace_id == workspace_id).first()
+    facture = db.query(FactureGlobale).filter(FactureGlobale.workspace_id == workspace_id).first()
+    if not facture:
+        raise HTTPException(status_code=400, detail="Veuillez déposer la facture globale.")
+    return facture
+
+def require_bl_and_facture_files(bl_files: List[str], facture_file: Optional[str]):
+    if not bl_files or not facture_file:
+        raise HTTPException(status_code=400, detail="Veuillez déposer les bons de livraison et la facture.")
 
 def delete_facture_globale(db: Session, facture_id: int) -> bool:
     db_facture = db.query(FactureGlobale).filter(FactureGlobale.id == facture_id).first()
