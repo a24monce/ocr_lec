@@ -63,7 +63,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `DELETE /factures-globales/{id}` - Supprimer une facture globale
 
 ### Comparaison
-- `POST /workspaces/{id}/check-bl-in-facture` - Comparer les BL avec la facture
+- `POST /workspaces/{id}/check-facture-in-bl` - Comparer les BL avec la facture
 
 ## Variables d'environnement
 
