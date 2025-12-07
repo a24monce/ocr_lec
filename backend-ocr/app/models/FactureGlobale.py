@@ -1,9 +1,8 @@
 from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey, Numeric, Text, DateTime
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-
-Base = declarative_base()
+from app.db.database import Base
 
 
 class FactureGlobale(Base):
