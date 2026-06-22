@@ -1,56 +1,96 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, UploadFile, HTTPException, Depends
+from typing import List
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.crud import FactureGlobale, documents, workspace
-from app.utils.file_handlers import extract_bl_numbers_from_facture, extract_text_from_pdf
-from PIL import Image
-import pytesseract
+from app.crud.workspace import (
+    create_workspace as create_workspace_crud,
+    get_workspace as get_workspace_crud,
+    get_workspaces as get_workspaces_crud,
+    delete_workspace as delete_workspace_crud,
+    update_workspace as update_workspace_crud,
+)
+from app.schemas.workspaces import WorkspaceCreate, Workspace as WorkspaceSchema, WorkspaceUpdate
+
 import os
-from datetime import datetime
 
-router = APIRouter()
+router = APIRouter(tags=["workspace"])
 
-@router.post("/workspaces/{workspace_id}/check-facture-in-bl")
-async def check_facture_in_bl(
-    workspace_id: int,
-    db: Session = Depends(get_db)
-):
-    # Vérifier workspace et facture
-    workspace = workspace.get_workspace(db, workspace_id=workspace_id)
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+UPLOAD_FOLDER = "./uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-    facture_globale = FactureGlobale.get_facture_globale_by_workspace(db, workspace_id=workspace_id)
-    if not facture_globale:
-        raise HTTPException(status_code=400, detail="Aucune facture globale trouvée")
 
-    # Extraire les numéros de BL de la facture
-    with open(facture_globale.file_path, 'rb') as f:
-        facture_bytes = f.read()
-    bl_numbers = extract_bl_numbers_from_facture(facture_bytes)
+@router.post("/", response_model=WorkspaceSchema)
+def create_workspace(workspace: WorkspaceCreate, db: Session = Depends(get_db)):
+    return create_workspace_crud(db, workspace)
 
-    if not bl_numbers:
-        raise HTTPException(status_code=400, detail="Aucun numéro de BL détecté dans la facture")
 
-    # Parcourir les documents (bons de livraison) et chercher les BL
-    documents = document.get_documents_by_workspace(db, workspace_id=workspace_id)
-    results = []
+@router.get("/", response_model=List[WorkspaceSchema])
+def list_workspaces(db: Session = Depends(get_db)):
+    return get_workspaces_crud(db)
 
-    for bl_number in bl_numbers:
-        found = False
-        for document in documents:
-            with open(document.file_path, 'rb') as f:
-                bl_text = extract_text_from_pdf(f.read()).replace(" ", "")
-                if bl_number.replace(" ", "") in bl_text:
-                    found = True
-                    break
-        results.append({
-            "bl_number": bl_number,
-            "found_in_documents": found
-        })
+
+@router.get("/{workspace_id}", response_model=WorkspaceSchema)
+def read_workspace(workspace_id: int, db: Session = Depends(get_db)):
+    ws = get_workspace_crud(db, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace introuvable")
+    return ws
+
+
+@router.put("/{workspace_id}", response_model=WorkspaceSchema)
+def update_workspace(workspace_id: int, workspace: WorkspaceUpdate, db: Session = Depends(get_db)):
+    return update_workspace_crud(db, workspace_id, workspace)
+
+
+@router.delete("/{workspace_id}", response_model=WorkspaceSchema)
+def delete_workspace(workspace_id: int, db: Session = Depends(get_db)):
+    deleted_workspace = delete_workspace_crud(db, workspace_id)
+    if not deleted_workspace:
+        raise HTTPException(status_code=404, detail="Workspace introuvable")
+    return deleted_workspace
+
+
+@router.post("/{workspace_id}/bl/")
+async def upload_document(workspace_id: int, file: UploadFile, db: Session = Depends(get_db)):
+    """Upload un bon de livraison (BL) pour un workspace"""
+
+    # chemin
+    workspace_folder = os.path.join(UPLOAD_FOLDER, f"workspace_{workspace_id}", "bl")
+    os.makedirs(workspace_folder, exist_ok=True)
+
+    # Sauvegarder le fichier
+    file_path = os.path.join(workspace_folder, file.filename)
+    content = await file.read()
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
 
     return {
-        "facture_file": facture_globale.original_filename,
-        "bl_numbers_detected": bl_numbers,
-        "results": results
+        "message": f"Document {file.filename} uploadé avec succès",
+        "workspace_id": workspace_id,
+        "path": file_path
+    }
+
+@router.post("/{workspace_id}/facture-globale/")
+async def upload_facture_globale(workspace_id: int, file: UploadFile, db: Session = Depends(get_db)):
+    """Upload une facture globale pour un workspace"""
+
+    # Chemin du dossier facture
+    workspace_folder = os.path.join(UPLOAD_FOLDER, f"workspace_{workspace_id}", "facture")
+    os.makedirs(workspace_folder, exist_ok=True)
+    
+    # --- Vérifier et supprimer l'ancienne facture
+    existing_files = [f for f in os.listdir(workspace_folder) if f.lower().endswith(".pdf")]
+    if existing_files:
+        for old_file in existing_files:
+            os.remove(os.path.join(workspace_folder, old_file))
+
+    # --- Sauvegarder la nouvelle facture
+    file_path = os.path.join(workspace_folder, file.filename)
+    content = await file.read()
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+
+    return {
+        "message": f"Facture globale {file.filename} uploadée avec succès (ancienne facture remplacée si elle existait).",
+        "workspace_id": workspace_id
     }

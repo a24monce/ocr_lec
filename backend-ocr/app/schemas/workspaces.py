@@ -10,6 +10,10 @@ class WorkspaceBase(BaseModel):
 class WorkspaceCreate(WorkspaceBase):
     pass
 
+class WorkspaceUpdate(BaseModel):
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+
 class Workspace(WorkspaceBase):
     id: int
     created_at: datetime
